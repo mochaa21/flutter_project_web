@@ -1,0 +1,257 @@
+// Aby
+import 'package:flutter/material.dart';
+import '../services/prestasi_service.dart';
+import '../services/master_service.dart'; // Import service baru
+
+class InputPrestasiScreen extends StatefulWidget {
+  const InputPrestasiScreen({super.key});
+
+  @override
+  State<InputPrestasiScreen> createState() => _InputPrestasiScreenState();
+}
+
+class _InputPrestasiScreenState extends State<InputPrestasiScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final PrestasiService _prestasiService = PrestasiService();
+  final MasterService _masterService = MasterService();
+
+  // Controller untuk input teks
+  final _namaKompetisiController = TextEditingController();
+  final _penyelenggaraController = TextEditingController();
+  final _tanggalKegiatanController = TextEditingController();
+
+  // Variabel untuk Dropdown
+  List<dynamic> _mahasiswaList = [];
+  List<dynamic> _kategoriList = [];
+  String? _selectedMahasiswaId;
+  String? _selectedKategoriId;
+
+  bool _isLoading = false;
+  bool _isFetchingMasterData = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchMasterData();
+  }
+
+  // Fungsi untuk mengambil data Mahasiswa dan Kategori dari Laravel
+  Future<void> _fetchMasterData() async {
+    try {
+      final mahasiswa = await _masterService.getMahasiswa();
+      final kategori = await _masterService.getKategori();
+      
+      if (mounted) {
+        setState(() {
+          _mahasiswaList = mahasiswa;
+          _kategoriList = kategori;
+          _isFetchingMasterData = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isFetchingMasterData = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Gagal memuat data Master (Mahasiswa/Kategori). Pastikan endpoint API tersedia.'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  Future<void> _submitData() async {
+    if (!_formKey.currentState!.validate()) return;
+    
+    if (_selectedMahasiswaId == null || _selectedKategoriId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Silakan pilih Mahasiswa dan Kategori terlebih dahulu'), backgroundColor: Colors.red),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      final data = {
+        'mahasiswa_id': _selectedMahasiswaId,
+        'kategori_id': _selectedKategoriId,
+        'nama_kompetisi': _namaKompetisiController.text,
+        'penyelenggara': _penyelenggaraController.text,
+        'tanggal_kegiatan': _tanggalKegiatanController.text,
+        // Status validasi default saat input baru
+        'status_validasi': 'Menunggu', 
+      };
+
+      await _prestasiService.createPrestasi(data);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Data berhasil disimpan', style: TextStyle(color: Colors.white)),
+            backgroundColor: Color(0xFF10B981),
+          ),
+        );
+        Navigator.pop(context, true);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Gagal menyimpan data: $e', style: const TextStyle(color: Colors.white)),
+            backgroundColor: const Color(0xFFEF4444),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _namaKompetisiController.dispose();
+    _penyelenggaraController.dispose();
+    _tanggalKegiatanController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8FAFC),
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Color(0xFF1E293B)),
+        title: const Text('Input Prestasi Baru', style: TextStyle(color: Color(0xFF1E293B), fontWeight: FontWeight.bold)),
+      ),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 480), // Kunci layout ukuran HP
+          child: _isFetchingMasterData
+              ? const Center(child: CircularProgressIndicator())
+              : SingleChildScrollView(
+                  padding: const EdgeInsets.all(24.0),
+                  child: Form(
+                    key: _formKey,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // DROPDOWN MAHASISWA
+                        DropdownButtonFormField<String>(
+                          value: _selectedMahasiswaId,
+                          decoration: _inputDecoration('Pilih Mahasiswa', Icons.person_outline),
+                          items: _mahasiswaList.map((mhs) {
+                            return DropdownMenuItem<String>(
+                              value: mhs['id'].toString(),
+                              child: Text(mhs['nama_lengkap'] ?? 'Tanpa Nama'),
+                            );
+                          }).toList(),
+                          onChanged: (value) => setState(() => _selectedMahasiswaId = value),
+                          validator: (value) => value == null ? 'Pilih mahasiswa terlebih dahulu' : null,
+                        ),
+                        const SizedBox(height: 16),
+                        
+                        // DROPDOWN KATEGORI
+                        DropdownButtonFormField<String>(
+                          value: _selectedKategoriId,
+                          isExpanded: true, // Agar teks panjang tidak error
+                          decoration: _inputDecoration('Pilih Kategori', Icons.category_outlined),
+                          items: _kategoriList.map((kat) {
+                            return DropdownMenuItem<String>(
+                              value: kat['id'].toString(),
+                              child: Text("${kat['nama_kategori']} (${kat['tingkat']})", overflow: TextOverflow.ellipsis),
+                            );
+                          }).toList(),
+                          onChanged: (value) => setState(() => _selectedKategoriId = value),
+                          validator: (value) => value == null ? 'Pilih kategori terlebih dahulu' : null,
+                        ),
+                        const SizedBox(height: 16),
+                        
+                        _buildTextField(
+                          controller: _namaKompetisiController,
+                          label: 'Nama Kompetisi / Kegiatan',
+                          icon: Icons.emoji_events_outlined,
+                        ),
+                        const SizedBox(height: 16),
+                        _buildTextField(
+                          controller: _penyelenggaraController,
+                          label: 'Penyelenggara',
+                          icon: Icons.business_outlined,
+                        ),
+                        const SizedBox(height: 16),
+                        _buildTextField(
+                          controller: _tanggalKegiatanController,
+                          label: 'Tanggal Kegiatan (YYYY-MM-DD)',
+                          icon: Icons.calendar_today_outlined,
+                          keyboardType: TextInputType.datetime,
+                        ),
+                        const SizedBox(height: 32),
+                        
+                        SizedBox(
+                          width: double.infinity,
+                          height: 50,
+                          child: ElevatedButton(
+                            onPressed: _isLoading ? null : _submitData,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF2563EB),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            child: _isLoading
+                                ? const CircularProgressIndicator(color: Colors.white)
+                                : const Text('Simpan Data', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+        ),
+      ),
+    );
+  }
+
+  // Fungsi pembantu untuk desain border form
+  InputDecoration _inputDecoration(String label, IconData icon) {
+    return InputDecoration(
+      labelText: label,
+      prefixIcon: Icon(icon, color: const Color(0xFF94A3B8)),
+      filled: true,
+      fillColor: Colors.white,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: Color(0xFF2563EB), width: 2),
+      ),
+    );
+  }
+
+  Widget _buildTextField({
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+    TextInputType keyboardType = TextInputType.text,
+  }) {
+    return TextFormField(
+      controller: controller,
+      keyboardType: keyboardType,
+      validator: (value) {
+        if (value == null || value.isEmpty) {
+          return '$label tidak boleh kosong';
+        }
+        return null;
+      },
+      decoration: _inputDecoration(label, icon),
+    );
+  }
+}
