@@ -6,7 +6,7 @@ import '../config/api_config.dart';
 import 'auth_service.dart';
 
 class PrestasiService {
-  Future<Map<String, dynamic>> getRiwayatPrestasi() async {
+  Future<dynamic> getRiwayatPrestasi() async {
     final token = await AuthService().getToken();
     if (token == null) throw Exception('Token tidak ditemukan');
 
@@ -22,7 +22,8 @@ class PrestasiService {
     if (response.statusCode == 200) {
       return jsonDecode(response.body);
     } else {
-      throw Exception('Gagal mengambil data dari server');
+      // INI YANG PENTING: Tampilkan error asli dari Laravel
+      throw Exception('Error ${response.statusCode}: ${response.body}');
     }
   }
 
