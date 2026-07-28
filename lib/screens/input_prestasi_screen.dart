@@ -1,7 +1,9 @@
 // Aby
+import 'dart:io'; // Tambahan untuk File
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart'; // Tambahan untuk akses Galeri
 import '../services/prestasi_service.dart';
-import '../services/master_service.dart'; // Import service baru
+import '../services/master_service.dart';
 
 class InputPrestasiScreen extends StatefulWidget {
   const InputPrestasiScreen({super.key});
@@ -26,6 +28,10 @@ class _InputPrestasiScreenState extends State<InputPrestasiScreen> {
   String? _selectedMahasiswaId;
   String? _selectedKategoriId;
 
+  // Variabel untuk Gambar
+  File? _imageFile;
+  final ImagePicker _picker = ImagePicker();
+
   bool _isLoading = false;
   bool _isFetchingMasterData = true;
 
@@ -35,7 +41,6 @@ class _InputPrestasiScreenState extends State<InputPrestasiScreen> {
     _fetchMasterData();
   }
 
-  // Fungsi untuk mengambil data Mahasiswa dan Kategori dari Laravel
   Future<void> _fetchMasterData() async {
     try {
       final mahasiswa = await _masterService.getMahasiswa();
@@ -58,6 +63,26 @@ class _InputPrestasiScreenState extends State<InputPrestasiScreen> {
     }
   }
 
+  // Fungsi untuk buka galeri dan pilih gambar
+  Future<void> _pickImage() async {
+    try {
+      final XFile? pickedFile = await _picker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 80, // Kompresi dikit biar ga terlalu berat ngirimnya
+      );
+      
+      if (pickedFile != null) {
+        setState(() {
+          _imageFile = File(pickedFile.path);
+        });
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Gagal mengambil gambar: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
   Future<void> _submitData() async {
     if (!_formKey.currentState!.validate()) return;
     
@@ -68,20 +93,31 @@ class _InputPrestasiScreenState extends State<InputPrestasiScreen> {
       return;
     }
 
+    // Validasi opsional: Kalo wajib pakai foto, aktifkan kodingan di bawah ini
+    /*
+    if (_imageFile == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Silakan upload bukti sertifikat terlebih dahulu'), backgroundColor: Colors.red),
+      );
+      return;
+    }
+    */
+
     setState(() => _isLoading = true);
 
     try {
-      final data = {
-        'mahasiswa_id': _selectedMahasiswaId,
-        'kategori_id': _selectedKategoriId,
+      // Perhatikan: Karena pakai MultipartRequest, semua value harus berbentuk String
+      final Map<String, String> data = {
+        'mahasiswa_id': _selectedMahasiswaId!,
+        'kategori_id': _selectedKategoriId!,
         'nama_kompetisi': _namaKompetisiController.text,
         'penyelenggara': _penyelenggaraController.text,
         'tanggal_kegiatan': _tanggalKegiatanController.text,
-        // Status validasi default saat input baru
         'status_validasi': 'Menunggu', 
       };
 
-      await _prestasiService.createPrestasi(data);
+      // Kirim data teks dan file gambar
+      await _prestasiService.createPrestasi(data, _imageFile);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -128,7 +164,7 @@ class _InputPrestasiScreenState extends State<InputPrestasiScreen> {
       ),
       body: Center(
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 480), // Kunci layout ukuran HP
+          constraints: const BoxConstraints(maxWidth: 480),
           child: _isFetchingMasterData
               ? const Center(child: CircularProgressIndicator())
               : SingleChildScrollView(
@@ -138,7 +174,6 @@ class _InputPrestasiScreenState extends State<InputPrestasiScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // DROPDOWN MAHASISWA
                         DropdownButtonFormField<String>(
                           value: _selectedMahasiswaId,
                           decoration: _inputDecoration('Pilih Mahasiswa', Icons.person_outline),
@@ -153,10 +188,9 @@ class _InputPrestasiScreenState extends State<InputPrestasiScreen> {
                         ),
                         const SizedBox(height: 16),
                         
-                        // DROPDOWN KATEGORI
                         DropdownButtonFormField<String>(
                           value: _selectedKategoriId,
-                          isExpanded: true, // Agar teks panjang tidak error
+                          isExpanded: true,
                           decoration: _inputDecoration('Pilih Kategori', Icons.category_outlined),
                           items: _kategoriList.map((kat) {
                             return DropdownMenuItem<String>(
@@ -187,6 +221,45 @@ class _InputPrestasiScreenState extends State<InputPrestasiScreen> {
                           icon: Icons.calendar_today_outlined,
                           keyboardType: TextInputType.datetime,
                         ),
+                        const SizedBox(height: 24),
+
+                        // BAGIAN UPLOAD GAMBAR
+                        const Text('Bukti Sertifikat / Dokumentasi', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF1E293B))),
+                        const SizedBox(height: 8),
+                        InkWell(
+                          onTap: _pickImage,
+                          child: Container(
+                            width: double.infinity,
+                            height: 150,
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              border: Border.all(color: const Color(0xFFE2E8F0)),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: _imageFile != null
+                                ? ClipRRect(
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: Image.file(_imageFile!, fit: BoxFit.cover, width: double.infinity),
+                                  )
+                                : Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: const [
+                                      Icon(Icons.upload_file, size: 40, color: Color(0xFF94A3B8)),
+                                      SizedBox(height: 8),
+                                      Text('Tap untuk pilih gambar dari Galeri', style: TextStyle(color: Color(0xFF64748B))),
+                                    ],
+                                  ),
+                          ),
+                        ),
+                        if (_imageFile != null)
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: TextButton.icon(
+                              onPressed: () => setState(() => _imageFile = null),
+                              icon: const Icon(Icons.delete, color: Colors.red, size: 18),
+                              label: const Text('Hapus Gambar', style: TextStyle(color: Colors.red)),
+                            ),
+                          ),
                         const SizedBox(height: 32),
                         
                         SizedBox(
@@ -214,7 +287,6 @@ class _InputPrestasiScreenState extends State<InputPrestasiScreen> {
     );
   }
 
-  // Fungsi pembantu untuk desain border form
   InputDecoration _inputDecoration(String label, IconData icon) {
     return InputDecoration(
       labelText: label,

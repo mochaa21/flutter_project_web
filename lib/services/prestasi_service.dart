@@ -1,5 +1,6 @@
 // Aby
 import 'dart:convert';
+import 'dart:io'; // Tambahan untuk File
 import 'package:http/http.dart' as http;
 import '../config/api_config.dart';
 import 'auth_service.dart';
@@ -10,7 +11,6 @@ class PrestasiService {
     if (token == null) throw Exception('Token tidak ditemukan');
 
     final response = await http.get(
-      // UBAH DISINI: Tambahkan ?per_page=100 agar semua transaksi ditarik
       Uri.parse('${ApiConfig.baseUrl}/riwayat-prestasi?per_page=100'),
       headers: {
         'Accept': 'application/json',
@@ -26,40 +26,54 @@ class PrestasiService {
     }
   }
 
-  Future<Map<String, dynamic>> createPrestasi(Map<String, dynamic> data) async {
+  // UBAH DISINI: Tambahkan parameter File gambar dan ubah jadi MultipartRequest
+  Future<Map<String, dynamic>> createPrestasi(Map<String, String> data, File? imageFile) async {
     final token = await AuthService().getToken();
     if (token == null) throw Exception('Token tidak ditemukan');
 
-    final response = await http.post(
-      Uri.parse('${ApiConfig.baseUrl}/riwayat-prestasi'),
-      headers: {
-        'Accept': 'application/json',
-        'Authorization': 'Bearer $token',
-        'ngrok-skip-browser-warning': 'true',
-      },
-      body: data,
-    );
+    var uri = Uri.parse('${ApiConfig.baseUrl}/riwayat-prestasi');
+    var request = http.MultipartRequest('POST', uri);
+
+    // Set Headers
+    request.headers.addAll({
+      'Accept': 'application/json',
+      'Authorization': 'Bearer $token',
+      'ngrok-skip-browser-warning': 'true',
+    });
+
+    // Masukkan data teks (Form Fields)
+    request.fields.addAll(data);
+
+    // Masukkan file gambar jika ada
+    // Sesuaikan 'file_sertifikat' dengan nama kolom/field yang diminta API Laravel lu
+    if (imageFile != null) {
+      request.files.add(
+        await http.MultipartFile.fromPath('file_sertifikat', imageFile.path),
+      );
+    }
+
+    // Kirim Request
+    var streamedResponse = await request.send();
+    var response = await http.Response.fromStream(streamedResponse);
 
     if (response.statusCode == 201 || response.statusCode == 200) {
       return jsonDecode(response.body);
     } else {
-      throw Exception('Gagal menyimpan data ke server');
+      throw Exception('Gagal menyimpan data ke server: ${response.body}');
     }
   }
 
-  // UBAH DISINI: Tambahkan parameter existingData
   Future<Map<String, dynamic>> updateStatus(int id, String status, Map<String, dynamic> existingData) async {
     final token = await AuthService().getToken();
     if (token == null) throw Exception('Token tidak ditemukan');
 
-    // Kemas semua data yang diminta Laravel
     final requestBody = {
       'mahasiswa_id': existingData['mahasiswa_id'],
       'kategori_id': existingData['kategori_id'],
       'nama_kompetisi': existingData['nama_kompetisi'],
       'penyelenggara': existingData['penyelenggara'],
       'tanggal_kegiatan': existingData['tanggal_kegiatan'],
-      'status_validasi': status, // Status barunya disisipkan di sini
+      'status_validasi': status, 
     };
 
     final response = await http.put(
@@ -70,7 +84,7 @@ class PrestasiService {
         'Authorization': 'Bearer $token',
         'ngrok-skip-browser-warning': 'true',
       },
-      body: jsonEncode(requestBody), // Encode semuanya ke JSON
+      body: jsonEncode(requestBody), 
     );
 
     if (response.statusCode == 200 || response.statusCode == 201) {
@@ -87,7 +101,6 @@ class PrestasiService {
     }
   }
 
-  // Tambahkan fungsi ini untuk menghapus data
   Future<void> deletePrestasi(int id) async {
     final token = await AuthService().getToken();
     if (token == null) throw Exception('Token tidak ditemukan');
@@ -101,7 +114,6 @@ class PrestasiService {
       },
     );
 
-    // Laravel biasanya merespon dengan 200 (OK) atau 204 (No Content) saat berhasil delete
     if (response.statusCode != 200 && response.statusCode != 204) {
       throw Exception('Gagal menghapus data HTTP: ${response.statusCode}');
     }
