@@ -36,7 +36,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Future<void> _fetchData() async {
     try {
       final data = await _prestasiService.getRiwayatPrestasi();
-      final List<dynamic> fetchedList = data['data'];
+      
+      // LOGIKA ANTI-ERROR: Cek apakah data dari Laravel bentuknya List atau Map(Pagination)
+      List<dynamic> fetchedList = [];
+      if (data is List) {
+        fetchedList = data;
+      } else if (data is Map && data['data'] != null) {
+        fetchedList = data['data'];
+      }
       
       int menunggu = 0;
       int disetujui = 0;
@@ -51,7 +58,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (mounted) {
         setState(() {
           _prestasiList = fetchedList;
-          _totalData = data['meta'] != null ? data['meta']['total'] : (data['total'] ?? 0);
+          _totalData = fetchedList.length; 
           _menunggu = menunggu;
           _disetujui = disetujui;
           _ditolak = ditolak;
@@ -61,9 +68,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
     } catch (e) {
       if (mounted) {
         setState(() => _isLoading = false);
+        // Tampilkan pesan error SUPER JELAS di layar
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Gagal memuat data')),
+          SnackBar(
+            content: Text('Error: $e'), 
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5), // Tampil lebih lama biar kebaca
+          ),
         );
+        print("DEBUG ERROR API: $e"); // Print ke debug console VS Code
       }
     }
   }
@@ -353,11 +366,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
       itemCount: _prestasiList.length,
       itemBuilder: (context, index) {
         final item = _prestasiList[index];
-        final String status = item['status_validasi'];
+        final String status = item['status_validasi'] ?? 'Menunggu';
         Color statusColor = const Color(0xFFF59E0B); 
         
         if (status == 'Disetujui' || status == 'Valid') statusColor = const Color(0xFF10B981);
         if (status == 'Ditolak') statusColor = const Color(0xFFEF4444);
+
+        // AMAN DARI NULL & BEDA NAMA KOLOM: Deteksi 'nama_lengkap' atau 'nama'
+        String namaMahasiswa = 'Tanpa Nama';
+        if (item['mahasiswa'] != null) {
+          namaMahasiswa = item['mahasiswa']['nama_lengkap'] ?? item['mahasiswa']['nama'] ?? 'Tanpa Nama';
+        }
+
+        // AMAN DARI NULL & BEDA NAMA KOLOM: Deteksi poin_skpi
+        String poinSkpi = '0';
+        if (item['kategori'] != null) {
+          poinSkpi = (item['kategori']['poin_skpi'] ?? '0').toString();
+        }
 
         return Container(
           margin: const EdgeInsets.only(bottom: 16),
@@ -399,14 +424,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            item['mahasiswa']['nama_lengkap'], 
+                            namaMahasiswa, 
                             style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: Color(0xFF1E293B)),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            item['nama_kompetisi'], 
+                            item['nama_kompetisi'] ?? '-', 
                             style: const TextStyle(color: Color(0xFF2563EB), fontSize: 13, fontWeight: FontWeight.w500),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -415,7 +440,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                     ),
                     Text(
-                      "${item['kategori']['poin_skpi']} Pts", 
+                      "$poinSkpi Pts", 
                       style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Color(0xFF1E293B)),
                     ),
                   ],
@@ -447,7 +472,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     
                     Row(
                       children: [
-                        // KODE AMAN: Semua tombol aksi HANYA muncul jika BUKAN user DAN BUKAN mahasiswa
                         if (widget.role.toLowerCase() != 'user' && widget.role.toLowerCase() != 'mahasiswa') ...[
                           if (status != 'Disetujui' && status != 'Valid') 
                             InkWell(
@@ -483,7 +507,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             ),
                           const SizedBox(width: 8),
                           
-                          // TOMBOL HAPUS SEKARANG DI DALAM BLOK ADMIN
                           InkWell(
                             onTap: () => _confirmDelete(item['id']),
                             child: Container(
