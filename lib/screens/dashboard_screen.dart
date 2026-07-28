@@ -1,8 +1,10 @@
 // Aby
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart'; // Tambahan untuk Export Laporan
 import '../services/auth_service.dart';
 import '../services/prestasi_service.dart';
+import '../config/api_config.dart'; // Tambahan untuk baseUrl
 import 'login_screen.dart';
 import 'input_prestasi_screen.dart';
 
@@ -18,8 +20,10 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   final AuthService _authService = AuthService();
   final PrestasiService _prestasiService = PrestasiService();
+  final TextEditingController _searchController = TextEditingController();
 
   List<dynamic> _prestasiList = [];
+  List<dynamic> _filteredList = []; // List baru khusus untuk hasil pencarian
   bool _isLoading = true;
   
   int _totalData = 0;
@@ -33,11 +37,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _fetchData();
   }
 
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
   Future<void> _fetchData() async {
     try {
       final data = await _prestasiService.getRiwayatPrestasi();
       
-      // LOGIKA ANTI-ERROR: Cek apakah data dari Laravel bentuknya List atau Map(Pagination)
       List<dynamic> fetchedList = [];
       if (data is List) {
         fetchedList = data;
@@ -58,6 +67,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (mounted) {
         setState(() {
           _prestasiList = fetchedList;
+          _filteredList = fetchedList; // Isi awal filtered list = semua data
           _totalData = fetchedList.length; 
           _menunggu = menunggu;
           _disetujui = disetujui;
@@ -68,15 +78,50 @@ class _DashboardScreenState extends State<DashboardScreen> {
     } catch (e) {
       if (mounted) {
         setState(() => _isLoading = false);
-        // Tampilkan pesan error SUPER JELAS di layar
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'), 
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 5), // Tampil lebih lama biar kebaca
-          ),
+          SnackBar(content: Text('Error memuat data: $e'), backgroundColor: Colors.red),
         );
-        print("DEBUG ERROR API: $e"); // Print ke debug console VS Code
+      }
+    }
+  }
+
+  // --- FITUR BARU: FUNGSI PENCARIAN REAL-TIME ---
+  void _filterData(String query) {
+    setState(() {
+      if (query.isEmpty) {
+        _filteredList = _prestasiList;
+      } else {
+        _filteredList = _prestasiList.where((item) {
+          final judul = (item['nama_kompetisi'] ?? '').toLowerCase();
+          final penyelenggara = (item['penyelenggara'] ?? '').toLowerCase();
+          final namaMahasiswa = (item['mahasiswa'] != null) 
+              ? (item['mahasiswa']['nama_lengkap'] ?? item['mahasiswa']['nama'] ?? '').toLowerCase() 
+              : '';
+              
+          final searchLower = query.toLowerCase();
+          return judul.contains(searchLower) || penyelenggara.contains(searchLower) || namaMahasiswa.contains(searchLower);
+        }).toList();
+      }
+    });
+  }
+
+  // --- FITUR BARU: FUNGSI EXPORT LAPORAN ---
+  Future<void> _exportLaporan() async {
+    // Sesuaikan URL ini dengan route web.php di Laravel lu.
+    // Pastikan di Laravel ada route: Route::get('/export-csv', [RiwayatPrestasiController::class, 'exportCsv']);
+    final url = Uri.parse('${ApiConfig.baseUrl.replaceAll('/api', '')}/export-csv');
+    
+    try {
+      if (await canLaunchUrl(url)) {
+        await launchUrl(url, mode: LaunchMode.externalApplication); // Buka lewat browser bawaan HP
+      } else {
+        throw 'Tidak dapat membuka link download';
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Gagal memulai proses download laporan'), backgroundColor: Colors.red),
+        );
       }
     }
   }
@@ -95,9 +140,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
       }
     }
   }
@@ -134,15 +177,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
       await _prestasiService.deletePrestasi(id);
       _fetchData(); 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Data berhasil dihapus'), backgroundColor: Colors.green),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Data berhasil dihapus'), backgroundColor: Colors.green));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Gagal menghapus: $e'), backgroundColor: Colors.red),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal menghapus: $e'), backgroundColor: Colors.red));
       }
     }
   }
@@ -150,10 +189,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void _handleLogout() async {
     await _authService.logout();
     if (mounted) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const LoginScreen()),
-      );
+      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
     }
   }
 
@@ -177,9 +213,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: const Color(0xFF2563EB).withOpacity(0.15),
-                      boxShadow: [
-                        BoxShadow(color: const Color(0xFF2563EB).withOpacity(0.2), blurRadius: 100),
-                      ],
+                      boxShadow: [BoxShadow(color: const Color(0xFF2563EB).withOpacity(0.2), blurRadius: 100)],
                     ),
                   ),
                 ),
@@ -201,13 +235,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               children: [
                                 _buildGreetingSection(),
                                 const SizedBox(height: 32),
-                                _buildBentoGrid(),
+                                _buildVisualBentoGrid(), // Grid statistik yang sudah di-upgrade visual
                                 const SizedBox(height: 40),
-                                const Text(
-                                  "Daftar Transaksi Terbaru",
-                                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
+                                
+                                // --- AREA PENCARIAN (SEARCH BAR) ---
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    const Text(
+                                      "Daftar Transaksi",
+                                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
+                                    ),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                      decoration: BoxDecoration(color: const Color(0xFFE2E8F0), borderRadius: BorderRadius.circular(20)),
+                                      child: Text("${_filteredList.length} Data", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xFF475569))),
+                                    )
+                                  ],
                                 ),
                                 const SizedBox(height: 16),
+                                _buildSearchBar(),
+                                const SizedBox(height: 16),
+                                
                                 _buildTransactionList(),
                                 const SizedBox(height: 80), 
                               ],
@@ -228,9 +277,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         context,
                         MaterialPageRoute(builder: (context) => const InputPrestasiScreen()),
                       );
-                      if (result == true) {
-                        _fetchData(); 
-                      }
+                      if (result == true) _fetchData(); 
                     },
                     backgroundColor: const Color(0xFF2563EB),
                     elevation: 4,
@@ -277,8 +324,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ],
       ),
       actions: [
+        // --- TOMBOL EXPORT LAPORAN DI APPBAR ---
+        if (widget.role.toLowerCase() != 'user' && widget.role.toLowerCase() != 'mahasiswa')
+          IconButton(
+            onPressed: _exportLaporan,
+            icon: const Icon(Icons.download_rounded, color: Color(0xFF10B981)),
+            tooltip: 'Download Laporan Excel/CSV',
+          ),
         Padding(
-          padding: const EdgeInsets.only(right: 16.0),
+          padding: const EdgeInsets.only(right: 16.0, left: 8.0),
           child: InkWell(
             onTap: _handleLogout,
             child: Container(
@@ -309,76 +363,151 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildBentoGrid() {
+  // --- TAMPILAN GRAFIK STATISTIK (VISUAL BENTO GRID) ---
+  Widget _buildVisualBentoGrid() {
     if (_isLoading) return const Center(child: CircularProgressIndicator());
-    return GridView.count(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      crossAxisCount: 2,
-      mainAxisSpacing: 16,
-      crossAxisSpacing: 16,
-      childAspectRatio: 1.1,
+    
+    // Kalkulasi persentase untuk bar visual
+    double progressMenunggu = _totalData == 0 ? 0 : _menunggu / _totalData;
+    double progressDisetujui = _totalData == 0 ? 0 : _disetujui / _totalData;
+    double progressDitolak = _totalData == 0 ? 0 : _ditolak / _totalData;
+
+    return Column(
       children: [
-        _buildStatCard("Total Data", _totalData.toString(), Icons.folder_copy_rounded, const Color(0xFF2563EB)),
-        _buildStatCard("Menunggu", _menunggu.toString(), Icons.hourglass_top_rounded, const Color(0xFFF59E0B)),
-        _buildStatCard("Disetujui", _disetujui.toString(), Icons.check_circle_rounded, const Color(0xFF10B981)),
-        _buildStatCard("Ditolak", _ditolak.toString(), Icons.cancel_rounded, const Color(0xFFEF4444)),
+        // Kotak Utama (Total & Grafik Visual)
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [BoxShadow(color: const Color(0xFF2563EB).withOpacity(0.08), blurRadius: 20, offset: const Offset(0, 8))],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text("Total Keseluruhan", style: TextStyle(color: Color(0xFF64748B), fontSize: 14, fontWeight: FontWeight.bold)),
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(color: const Color(0xFF2563EB).withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
+                    child: const Icon(Icons.analytics_rounded, color: Color(0xFF2563EB), size: 20),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(_totalData.toString(), style: const TextStyle(fontSize: 36, fontWeight: FontWeight.w900, color: Color(0xFF1E293B))),
+              const SizedBox(height: 20),
+              
+              // Bar Grafik Sederhana
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Row(
+                  children: [
+                    if (_disetujui > 0) Expanded(flex: _disetujui, child: Container(height: 8, color: const Color(0xFF10B981))),
+                    if (_menunggu > 0) Expanded(flex: _menunggu, child: Container(height: 8, color: const Color(0xFFF59E0B))),
+                    if (_ditolak > 0) Expanded(flex: _ditolak, child: Container(height: 8, color: const Color(0xFFEF4444))),
+                    if (_totalData == 0) Expanded(child: Container(height: 8, color: const Color(0xFFE2E8F0))),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        
+        // Grid Status Bawahnya
+        Row(
+          children: [
+            Expanded(child: _buildMiniStatCard("Menunggu", _menunggu.toString(), Icons.hourglass_top_rounded, const Color(0xFFF59E0B), progressMenunggu)),
+            const SizedBox(width: 16),
+            Expanded(child: _buildMiniStatCard("Disetujui", _disetujui.toString(), Icons.check_circle_rounded, const Color(0xFF10B981), progressDisetujui)),
+          ],
+        )
       ],
     );
   }
 
-  Widget _buildStatCard(String title, String count, IconData icon, Color color) {
+  Widget _buildMiniStatCard(String title, String count, IconData icon, Color color, double progress) {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(20),
         boxShadow: [BoxShadow(color: color.withOpacity(0.08), blurRadius: 20, offset: const Offset(0, 8))],
       ),
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(14)),
-            child: Icon(icon, color: color, size: 24),
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(count, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: Color(0xFF1E293B))),
-              Text(title, style: const TextStyle(color: Color(0xFF64748B), fontSize: 13)),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
+                child: Icon(icon, color: color, size: 18),
+              ),
+              Text("${(progress * 100).toInt()}%", style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12)),
             ],
           ),
+          const SizedBox(height: 16),
+          Text(count, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: Color(0xFF1E293B))),
+          Text(title, style: const TextStyle(color: Color(0xFF64748B), fontSize: 12)),
         ],
+      ),
+    );
+  }
+
+  // --- SEARCH BAR WIDGET ---
+  Widget _buildSearchBar() {
+    return TextField(
+      controller: _searchController,
+      onChanged: _filterData,
+      decoration: InputDecoration(
+        hintText: 'Cari nama kompetisi, mahasiswa...',
+        hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 14),
+        prefixIcon: const Icon(Icons.search, color: Color(0xFF94A3B8)),
+        suffixIcon: _searchController.text.isNotEmpty
+            ? IconButton(
+                icon: const Icon(Icons.clear, color: Color(0xFF94A3B8), size: 18),
+                onPressed: () {
+                  _searchController.clear();
+                  _filterData('');
+                },
+              )
+            : null,
+        filled: true,
+        fillColor: Colors.white,
+        contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFF2563EB), width: 1.5)),
       ),
     );
   }
 
   Widget _buildTransactionList() {
     if (_isLoading) return const Center(child: Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator()));
-    if (_prestasiList.isEmpty) return const Center(child: Text("Belum ada data prestasi."));
+    if (_filteredList.isEmpty) return const Center(child: Text("Data tidak ditemukan.", style: TextStyle(color: Color(0xFF64748B))));
 
     return ListView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      itemCount: _prestasiList.length,
+      itemCount: _filteredList.length, // Gunakan filtered list
       itemBuilder: (context, index) {
-        final item = _prestasiList[index];
+        final item = _filteredList[index];
         final String status = item['status_validasi'] ?? 'Menunggu';
         Color statusColor = const Color(0xFFF59E0B); 
         
         if (status == 'Disetujui' || status == 'Valid') statusColor = const Color(0xFF10B981);
         if (status == 'Ditolak') statusColor = const Color(0xFFEF4444);
 
-        // AMAN DARI NULL & BEDA NAMA KOLOM: Deteksi 'nama_lengkap' atau 'nama'
         String namaMahasiswa = 'Tanpa Nama';
         if (item['mahasiswa'] != null) {
           namaMahasiswa = item['mahasiswa']['nama_lengkap'] ?? item['mahasiswa']['nama'] ?? 'Tanpa Nama';
         }
 
-        // AMAN DARI NULL & BEDA NAMA KOLOM: Deteksi poin_skpi
         String poinSkpi = '0';
         if (item['kategori'] != null) {
           poinSkpi = (item['kategori']['poin_skpi'] ?? '0').toString();
@@ -391,11 +520,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             borderRadius: BorderRadius.circular(20),
             border: Border.all(color: const Color(0xFFF1F5F9), width: 1.5),
             boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.015),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
+              BoxShadow(color: Colors.black.withOpacity(0.015), blurRadius: 10, offset: const Offset(0, 4)),
             ],
           ),
           child: Padding(
@@ -409,14 +534,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       width: 48,
                       height: 48,
                       alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: Text(
-                        "0${index + 1}", 
-                        style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF94A3B8), fontSize: 16),
-                      ),
+                      decoration: BoxDecoration(color: const Color(0xFFF8FAFC), borderRadius: BorderRadius.circular(14)),
+                      child: Text("0${index + 1}", style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF94A3B8), fontSize: 16)),
                     ),
                     const SizedBox(width: 16),
                     Expanded(
@@ -426,23 +545,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           Text(
                             namaMahasiswa, 
                             style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: Color(0xFF1E293B)),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1, overflow: TextOverflow.ellipsis,
                           ),
                           const SizedBox(height: 4),
                           Text(
                             item['nama_kompetisi'] ?? '-', 
                             style: const TextStyle(color: Color(0xFF2563EB), fontSize: 13, fontWeight: FontWeight.w500),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1, overflow: TextOverflow.ellipsis,
                           ),
                         ],
                       ),
                     ),
-                    Text(
-                      "$poinSkpi Pts", 
-                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Color(0xFF1E293B)),
-                    ),
+                    Text("$poinSkpi Pts", style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Color(0xFF1E293B))),
                   ],
                 ),
                 
@@ -456,10 +570,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   children: [
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: statusColor.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
+                      decoration: BoxDecoration(color: statusColor.withOpacity(0.1), borderRadius: BorderRadius.circular(20)),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -528,4 +639,3 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 }
-
