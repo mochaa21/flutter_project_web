@@ -27,13 +27,23 @@ class _EditProfilScreenState extends State<EditProfilScreen> {
     _loadCurrentProfile();
   }
 
+
+  final AuthService _authService = AuthService();
   // Tarik data nama yang lagi login buat ditampilin di form
   Future<void> _loadCurrentProfile() async {
-    // TODO: Nanti kita sambungin ke service API buat narik data profil
-    // Sementara pakai nama dummy atau kosong
-    setState(() {
-      _namaController.text = ""; // Nanti diisi otomatis dari API
-    });
+    try {
+      final data = await _authService.getProfile();
+      if (mounted) {
+        setState(() {
+          // Sesuaikan 'name' jika kolom di tabel users lu berbeda (misal 'nama_lengkap')
+          _namaController.text = data['data']['name'] ?? ''; 
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal memuat profil: $e'), backgroundColor: Colors.red));
+      }
+    }
   }
 
   Future<void> _simpanProfil() async {
@@ -42,22 +52,21 @@ class _EditProfilScreenState extends State<EditProfilScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // TODO: Panggil fungsi API update profil di sini nanti
-      
-      // Simulasi loading
-      await Future.delayed(const Duration(seconds: 2));
+      // Panggil fungsi update ke API
+      await _authService.updateProfile(
+        _namaController.text,
+        _passwordController.text.isEmpty ? null : _passwordController.text,
+      );
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Profil berhasil diperbarui!'), backgroundColor: Color(0xFF10B981)),
         );
-        Navigator.pop(context, true); // Kembali ke halaman sebelumnya bawa status sukses
+        Navigator.pop(context, true); // Kembali ke halaman sebelumnya
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Gagal memperbarui profil: $e'), backgroundColor: Colors.red),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal memperbarui profil: $e'), backgroundColor: Colors.red));
       }
     } finally {
       if (mounted) {
