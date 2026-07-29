@@ -14,7 +14,7 @@ class _ValidatorScreenState extends State<ValidatorScreen> {
   final ValidatorService _validatorService = ValidatorService();
   
   bool _isLoading = true;
-  List<dynamic> _validatorList = [];
+  List<dynamic> _pendingList = [];
   List<dynamic> _filteredList = [];
 
   @override
@@ -26,10 +26,10 @@ class _ValidatorScreenState extends State<ValidatorScreen> {
   Future<void> _fetchData() async {
     setState(() => _isLoading = true);
     try {
-      final data = await _validatorService.getValidator();
+      final data = await _validatorService.getPendingUsers();
       if (mounted) {
         setState(() {
-          _validatorList = data;
+          _pendingList = data;
           _filteredList = data;
           _isLoading = false;
         });
@@ -37,8 +37,22 @@ class _ValidatorScreenState extends State<ValidatorScreen> {
     } catch (e) {
       if (mounted) {
         setState(() => _isLoading = false);
-        // Kalau error (misal API belum siap), kita bisa tampilin notif
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
+      }
+    }
+  }
+
+  // Fungsi saat tombol ACC ditekan
+  Future<void> _accAkun(int id, String nama) async {
+    try {
+      await _validatorService.accAkun(id);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Akun $nama berhasil di-ACC!'), backgroundColor: const Color(0xFF10B981)));
+        _fetchData(); // Refresh list otomatis setelah ACC berhasil
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal ACC: $e'), backgroundColor: Colors.red));
       }
     }
   }
@@ -46,13 +60,12 @@ class _ValidatorScreenState extends State<ValidatorScreen> {
   void _filterData(String query) {
     setState(() {
       if (query.isEmpty) {
-        _filteredList = _validatorList;
+        _filteredList = _pendingList;
       } else {
-        _filteredList = _validatorList.where((item) {
+        _filteredList = _pendingList.where((item) {
           final nama = (item['name'] ?? item['nama'] ?? '').toString().toLowerCase();
           final email = (item['email'] ?? '').toString().toLowerCase();
-          final searchLower = query.toLowerCase();
-          return nama.contains(searchLower) || email.contains(searchLower);
+          return nama.contains(query.toLowerCase()) || email.contains(query.toLowerCase());
         }).toList();
       }
     });
@@ -72,15 +85,7 @@ class _ValidatorScreenState extends State<ValidatorScreen> {
         backgroundColor: Colors.white,
         elevation: 0,
         iconTheme: const IconThemeData(color: Color(0xFF1E293B)),
-        title: const Text('Data Validator', style: TextStyle(color: Color(0xFF1E293B), fontWeight: FontWeight.bold)),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.person_add_alt_1_rounded, color: Color(0xFF2563EB)),
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Form Tambah Akun segera hadir!')));
-            },
-          )
-        ],
+        title: const Text('Approval Akun', style: TextStyle(color: Color(0xFF1E293B), fontWeight: FontWeight.bold)),
       ),
       body: Center(
         child: ConstrainedBox(
@@ -94,7 +99,7 @@ class _ValidatorScreenState extends State<ValidatorScreen> {
                   controller: _searchController,
                   onChanged: _filterData,
                   decoration: InputDecoration(
-                    hintText: 'Cari nama atau email...',
+                    hintText: 'Cari akun pending...',
                     hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 14),
                     prefixIcon: const Icon(Icons.search, color: Color(0xFF94A3B8)),
                     filled: true,
@@ -115,7 +120,7 @@ class _ValidatorScreenState extends State<ValidatorScreen> {
                           ? ListView(
                               children: const [
                                 SizedBox(height: 100),
-                                Center(child: Text("Data validator tidak ditemukan", style: TextStyle(color: Color(0xFF64748B))))
+                                Center(child: Text("Tidak ada akun yang menunggu approval", style: TextStyle(color: Color(0xFF64748B))))
                               ],
                             )
                           : ListView.separated(
@@ -124,9 +129,9 @@ class _ValidatorScreenState extends State<ValidatorScreen> {
                               separatorBuilder: (context, index) => const SizedBox(height: 12),
                               itemBuilder: (context, index) {
                                 final item = _filteredList[index];
+                                final int id = item['id'];
                                 final String nama = item['name'] ?? item['nama'] ?? 'Tanpa Nama';
                                 final String email = item['email'] ?? '-';
-                                final String role = (item['role'] ?? 'Operator').toString().toUpperCase();
                                 final String inisial = nama.isNotEmpty ? nama.substring(0, 1).toUpperCase() : '?';
 
                                 return Container(
@@ -138,35 +143,24 @@ class _ValidatorScreenState extends State<ValidatorScreen> {
                                   child: ListTile(
                                     contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                                     leading: CircleAvatar(
-                                      backgroundColor: const Color(0xFFFFF7ED), // Warna orange lembut
-                                      child: Text(
-                                        inisial,
-                                        style: const TextStyle(color: Color(0xFFEA580C), fontWeight: FontWeight.bold),
-                                      ),
+                                      backgroundColor: const Color(0xFFFFF7ED),
+                                      child: Text(inisial, style: const TextStyle(color: Color(0xFFEA580C), fontWeight: FontWeight.bold)),
                                     ),
                                     title: Text(nama, style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF1E293B))),
-                                    subtitle: Padding(
-                                      padding: const EdgeInsets.only(top: 4.0),
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text(email, style: const TextStyle(color: Color(0xFF64748B), fontSize: 13)),
-                                          const SizedBox(height: 6),
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                            decoration: BoxDecoration(
-                                              color: const Color(0xFFF1F5F9),
-                                              borderRadius: BorderRadius.circular(6),
-                                            ),
-                                            child: Text(role, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF475569))),
-                                          )
-                                        ],
+                                    subtitle: Text(email, style: const TextStyle(color: Color(0xFF64748B), fontSize: 13)),
+                                    
+                                    // TOMBOL ACC HIJAU
+                                    trailing: ElevatedButton(
+                                      onPressed: () => _accAkun(id, nama),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: const Color(0xFF10B981),
+                                        elevation: 0,
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                        minimumSize: Size.zero,
                                       ),
+                                      child: const Text('ACC', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
                                     ),
-                                    trailing: const Icon(Icons.admin_panel_settings_rounded, color: Color(0xFFCBD5E1)),
-                                    onTap: () {
-                                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Kelola akses: $nama')));
-                                    },
                                   ),
                                 );
                               },
