@@ -1,6 +1,7 @@
 // Aby
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'edit_profil_screen.dart';
 import '../services/auth_service.dart';
 import 'login_screen.dart';
 
@@ -149,7 +150,12 @@ class _ProfilScreenState extends State<ProfilScreen> {
                           icon: Icons.manage_accounts_rounded,
                           title: "Pengaturan Akun",
                           color: const Color(0xFF334155),
-                          onTap: () => _showComingSoon('Pengaturan Akun'),
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (context) => const EditProfilScreen()),
+                            );
+                          },
                         ),
                         const SizedBox(height: 12),
                         _buildMenuCard(

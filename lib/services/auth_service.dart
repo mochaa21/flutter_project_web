@@ -87,6 +87,57 @@ class AuthService {
     }
   }
 
+  // PROFILE
+  // Mengambil data profil
+  Future<Map<String, dynamic>> getProfile() async {
+    final token = await getToken();
+    if (token == null) throw Exception('Token tidak ditemukan');
+
+    final response = await http.get(
+      Uri.parse('${ApiConfig.baseUrl}/profil'),
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': 'Bearer $token',
+        'ngrok-skip-browser-warning': 'true',
+      },
+    );
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    } else {
+      throw Exception('Gagal mengambil data profil');
+    }
+  }
+
+  // Menyimpan data profil
+  Future<void> updateProfile(String name, String? password) async {
+    final token = await getToken();
+    if (token == null) throw Exception('Token tidak ditemukan');
+
+    // Masukkan data nama
+    final Map<String, String> body = {'name': name}; 
+    
+    // Jika password diisi, ikut kirim ke Laravel
+    if (password != null && password.isNotEmpty) {
+      body['password'] = password;
+    }
+
+    final response = await http.post(
+      Uri.parse('${ApiConfig.baseUrl}/profil/update'),
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': 'Bearer $token',
+        'ngrok-skip-browser-warning': 'true',
+      },
+      body: body,
+    );
+
+    if (response.statusCode != 200) {
+      final error = jsonDecode(response.body);
+      throw Exception(error['message'] ?? 'Gagal mengupdate profil');
+    }
+  }
+
   Future<void> _saveAuthData(String token, String role) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('auth_token', token);
