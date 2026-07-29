@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config/api_config.dart';
+import 'package:image_picker/image_picker.dart';
 
 class AuthService {
   Future<Map<String, dynamic>> login(String email, String password) async {
@@ -135,6 +136,39 @@ class AuthService {
     if (response.statusCode != 200) {
       final error = jsonDecode(response.body);
       throw Exception(error['message'] ?? 'Gagal mengupdate profil');
+    }
+  }
+
+  // Fungsi Upload Foto Profil (Support Web & Mobile)
+  Future<String?> uploadFotoProfil(XFile imageFile) async {
+    final token = await getToken();
+    if (token == null) throw Exception('Token tidak ditemukan');
+
+    var request = http.MultipartRequest('POST', Uri.parse('${ApiConfig.baseUrl}/profil/foto'));
+    request.headers.addAll({
+      'Authorization': 'Bearer $token',
+      'Accept': 'application/json',
+      'ngrok-skip-browser-warning': 'true',
+    });
+
+    // Karena jalan di Web, kita baca gambarnya sebagai Bytes
+    var bytes = await imageFile.readAsBytes();
+    var multipartFile = http.MultipartFile.fromBytes(
+      'foto_profil', 
+      bytes, 
+      filename: imageFile.name,
+    );
+    
+    request.files.add(multipartFile);
+
+    var response = await request.send();
+    var responseData = await response.stream.bytesToString();
+    var json = jsonDecode(responseData);
+
+    if (response.statusCode == 200) {
+      return json['data']['foto_profil']; // Kembalikan nama file terbaru
+    } else {
+      throw Exception(json['message'] ?? 'Gagal mengupload foto');
     }
   }
 

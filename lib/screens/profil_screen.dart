@@ -1,9 +1,11 @@
 // Aby
 import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'edit_profil_screen.dart';
+import 'package:image_picker/image_picker.dart';
 import '../services/auth_service.dart';
+import '../config/api_config.dart';
 import 'login_screen.dart';
+import 'edit_profil_screen.dart';
 
 class ProfilScreen extends StatefulWidget {
   final String role;
@@ -15,9 +17,56 @@ class ProfilScreen extends StatefulWidget {
 
 class _ProfilScreenState extends State<ProfilScreen> {
   final AuthService _authService = AuthService();
+  
+  String _namaLengkap = "Memuat...";
+  String _fotoProfil = ""; // Simpan nama file foto
+  bool _isLoadingPhoto = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProfileData();
+  }
+
+  // Tarik data profil dari Laravel
+  Future<void> _loadProfileData() async {
+    try {
+      final data = await _authService.getProfile();
+      if (mounted) {
+        setState(() {
+          _namaLengkap = data['data']['name'] ?? 'Tanpa Nama';
+          _fotoProfil = data['data']['foto_profil'] ?? '';
+        });
+      }
+    } catch (e) {
+      print("Gagal memuat profil: $e");
+    }
+  }
+
+  // Buka galeri dan langsung upload
+  Future<void> _pickAndUploadPhoto() async {
+    final ImagePicker picker = ImagePicker();
+    final XFile? image = await picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
+
+    if (image != null) {
+      setState(() => _isLoadingPhoto = true);
+      try {
+        String? newFileName = await _authService.uploadFotoProfil(image);
+        if (newFileName != null) {
+          setState(() {
+            _fotoProfil = newFileName; // Update UI langsung
+          });
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Foto profil berhasil diperbarui!'), backgroundColor: Color(0xFF10B981)));
+        }
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal upload: $e'), backgroundColor: Colors.red));
+      } finally {
+        setState(() => _isLoadingPhoto = false);
+      }
+    }
+  }
 
   void _handleLogout() async {
-    // Tampilkan dialog konfirmasi sebelum logout
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -37,10 +86,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
                 Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
               }
             },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFEF4444),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            ),
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFEF4444), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
             child: const Text('Ya, Keluar', style: TextStyle(color: Colors.white)),
           ),
         ],
@@ -50,17 +96,17 @@ class _ProfilScreenState extends State<ProfilScreen> {
 
   void _showComingSoon(String featureName) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Fitur $featureName akan segera hadir!'),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        backgroundColor: const Color(0xFF2563EB),
-      ),
+      SnackBar(content: Text('Fitur $featureName segera hadir!'), backgroundColor: const Color(0xFF2563EB)),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    // Siapkan URL gambar asli dari server Laravel (folder public/profil)
+    String photoUrl = _fotoProfil.isNotEmpty 
+        ? '${ApiConfig.baseUrl.replaceAll('/api', '')}/storage/profil/$_fotoProfil' 
+        : '';
+
     return Scaffold(
       backgroundColor: const Color(0xFFE2E8F0),
       body: Center(
@@ -77,9 +123,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
                   decoration: const BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.only(bottomLeft: Radius.circular(32), bottomRight: Radius.circular(32)),
-                    boxShadow: [
-                      BoxShadow(color: Color(0x0A000000), blurRadius: 20, offset: Offset(0, 10)),
-                    ],
+                    boxShadow: [BoxShadow(color: Color(0x0A000000), blurRadius: 20, offset: Offset(0, 10))],
                   ),
                   child: Column(
                     children: [
@@ -92,24 +136,32 @@ class _ProfilScreenState extends State<ProfilScreen> {
                               shape: BoxShape.circle,
                               color: const Color(0xFFEEF2FF),
                               border: Border.all(color: Colors.white, width: 4),
-                              boxShadow: [
-                                BoxShadow(color: const Color(0xFF2563EB).withOpacity(0.2), blurRadius: 20, offset: const Offset(0, 8)),
-                              ],
+                              boxShadow: [BoxShadow(color: const Color(0xFF2563EB).withOpacity(0.2), blurRadius: 20, offset: const Offset(0, 8))],
+                              // Tampilkan gambar jika ada URL-nya, jika tidak pakai icon orang
+                              image: photoUrl.isNotEmpty
+                                  ? DecorationImage(image: NetworkImage(photoUrl), fit: BoxFit.cover)
+                                  : null,
                             ),
-                            child: const Icon(Icons.person_rounded, size: 50, color: Color(0xFF2563EB)),
+                            child: photoUrl.isEmpty
+                                ? const Icon(Icons.person_rounded, size: 50, color: Color(0xFF2563EB))
+                                : null,
                           ),
+                          
+                          // Loading Indicator saat upload
+                          if (_isLoadingPhoto)
+                            const Positioned.fill(
+                              child: CircularProgressIndicator(color: Color(0xFF2563EB)),
+                            ),
+
+                          // Tombol Edit Pensil
                           Positioned(
                             bottom: 0,
                             right: 0,
                             child: InkWell(
-                              onTap: () => _showComingSoon('Ganti Foto Profil'),
+                              onTap: _isLoadingPhoto ? null : _pickAndUploadPhoto,
                               child: Container(
                                 padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF2563EB),
-                                  shape: BoxShape.circle,
-                                  border: Border.all(color: Colors.white, width: 3),
-                                ),
+                                decoration: BoxDecoration(color: const Color(0xFF2563EB), shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 3)),
                                 child: const Icon(Icons.edit_rounded, color: Colors.white, size: 14),
                               ),
                             ),
@@ -118,19 +170,16 @@ class _ProfilScreenState extends State<ProfilScreen> {
                       ),
                       const SizedBox(height: 16),
                       Text(
-                        widget.role.toUpperCase(),
-                        style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Color(0xFF1E293B), letterSpacing: 1.2),
+                        _namaLengkap, // Nama ditarik asli dari database
+                        style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Color(0xFF1E293B)),
                       ),
                       const SizedBox(height: 4),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF1F5F9),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: const Text(
-                          "Universitas Muhammadiyah",
-                          style: TextStyle(fontSize: 12, color: Color(0xFF64748B), fontWeight: FontWeight.w500),
+                        decoration: BoxDecoration(color: const Color(0xFFF1F5F9), borderRadius: BorderRadius.circular(20)),
+                        child: Text(
+                          widget.role.toUpperCase(),
+                          style: const TextStyle(fontSize: 12, color: Color(0xFF64748B), fontWeight: FontWeight.w800, letterSpacing: 1.1),
                         ),
                       ),
                     ],
@@ -151,10 +200,9 @@ class _ProfilScreenState extends State<ProfilScreen> {
                           title: "Pengaturan Akun",
                           color: const Color(0xFF334155),
                           onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(builder: (context) => const EditProfilScreen()),
-                            );
+                            Navigator.push(context, MaterialPageRoute(builder: (context) => const EditProfilScreen())).then((value) {
+                              if (value == true) _loadProfileData(); // Reload data kalau habis edit profil
+                            });
                           },
                         ),
                         const SizedBox(height: 12),
@@ -163,13 +211,6 @@ class _ProfilScreenState extends State<ProfilScreen> {
                           title: "Panduan Validasi",
                           color: const Color(0xFF334155),
                           onTap: () => _showComingSoon('Panduan Validasi'),
-                        ),
-                        const SizedBox(height: 12),
-                        _buildMenuCard(
-                          icon: Icons.info_outline_rounded,
-                          title: "Tentang Aplikasi",
-                          color: const Color(0xFF334155),
-                          onTap: () => _showComingSoon('Tentang Aplikasi'),
                         ),
                         
                         const SizedBox(height: 40),
@@ -182,11 +223,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
                             onPressed: _handleLogout,
                             icon: const Icon(Icons.logout_rounded, color: Colors.white),
                             label: const Text("Keluar Aplikasi", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFFEF4444),
-                              elevation: 0,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                            ),
+                            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFEF4444), elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
                           ),
                         ),
                       ],
@@ -203,11 +240,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
 
   Widget _buildMenuCard({required IconData icon, required String title, required Color color, required VoidCallback onTap}) {
     return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFF1F5F9), width: 1.5),
-      ),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFFF1F5F9), width: 1.5)),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
@@ -217,11 +250,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
             child: Row(
               children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(color: const Color(0xFFF8FAFC), borderRadius: BorderRadius.circular(12)),
-                  child: Icon(icon, color: color, size: 20),
-                ),
+                Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: const Color(0xFFF8FAFC), borderRadius: BorderRadius.circular(12)), child: Icon(icon, color: color, size: 20)),
                 const SizedBox(width: 16),
                 Expanded(child: Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Color(0xFF1E293B)))),
                 const Icon(Icons.arrow_forward_ios_rounded, color: Color(0xFFCBD5E1), size: 16),
