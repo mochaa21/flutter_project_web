@@ -66,6 +66,93 @@ class _ProfilScreenState extends State<ProfilScreen> {
     }
   }
 
+  // --- FITUR BARU: HAPUS FOTO ---
+  Future<void> _deletePhoto() async {
+    setState(() => _isLoadingPhoto = true);
+    try {
+      await _authService.deleteFotoProfil();
+      setState(() {
+        _fotoProfil = ""; // Kosongkan UI langsung
+      });
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Foto profil berhasil dihapus'), backgroundColor: Colors.green));
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal menghapus: $e'), backgroundColor: Colors.red));
+    } finally {
+      setState(() => _isLoadingPhoto = false);
+    }
+  }
+
+  // --- FITUR BARU: MENU PILIHAN FOTO ---
+  void _showPhotoOptions() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 20.0),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_library_rounded, color: Color(0xFF2563EB)),
+              title: const Text('Ubah Foto Profil', style: TextStyle(fontWeight: FontWeight.bold)),
+              onTap: () {
+                Navigator.pop(context); // Tutup menu
+                _pickAndUploadPhoto(); // Jalankan fungsi ubah
+              },
+            ),
+            if (_fotoProfil.isNotEmpty) // Tombol hapus cuma muncul kalau fotonya ada
+              ListTile(
+                leading: const Icon(Icons.delete_outline_rounded, color: Colors.red),
+                title: const Text('Hapus Foto', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+                onTap: () {
+                  Navigator.pop(context);
+                  _deletePhoto();
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // --- FITUR BARU: LIHAT FOTO DIPERBESAR ---
+  void _showEnlargedImage(String url) {
+    if (url.isEmpty) return; // Kalau ga ada foto, ga usah ngapa-ngapain
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(16),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            InteractiveViewer( // Biar fotonya bisa di-zoom pakai jari (cubit)
+              panEnabled: true,
+              minScale: 1.0,
+              maxScale: 4.0,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: Image.network(
+                  url,
+                  headers: const {'ngrok-skip-browser-warning': 'true'},
+                  fit: BoxFit.contain,
+                ),
+              ),
+            ),
+            Positioned(
+              top: 0,
+              right: 0,
+              child: IconButton(
+                icon: const Icon(Icons.close_rounded, color: Colors.white, size: 32),
+                onPressed: () => Navigator.pop(context),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _handleLogout() async {
     showDialog(
       context: context,
@@ -130,47 +217,47 @@ class _ProfilScreenState extends State<ProfilScreen> {
                     children: [
                       Stack(
                         children: [
-                          Container(
-                            width: 100,
-                            height: 100,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: const Color(0xFFEEF2FF),
-                              border: Border.all(color: Colors.white, width: 4),
-                              boxShadow: [BoxShadow(color: const Color(0xFF2563EB).withOpacity(0.2), blurRadius: 20, offset: const Offset(0, 8))],
-                            ),
-                            // UBAH DISINI: Pakai ClipOval & Image.network biar kebal error di Web
-                            child: ClipOval(
-                              child: photoUrl.isNotEmpty
-                                  ? Image.network(
-                                      photoUrl,
-                                      fit: BoxFit.cover,
-                                      width: 100,
-                                      height: 100,
-                                      headers: const {
-                                        'ngrok-skip-browser-warning': 'true',
-                                      },
-                                      errorBuilder: (context, error, stackTrace) {
-                                        // Kalau diblokir CORS Chrome atau 404, balik ke icon default
-                                        return const Icon(Icons.image_not_supported_rounded, size: 40, color: Color(0xFF94A3B8));
-                                      },
-                                    )
-                                  : const Icon(Icons.person_rounded, size: 50, color: Color(0xFF2563EB)),
+                          // KITA BUNGKUS DENGAN INKWELL BIAR BISA DI-TAP
+                          InkWell(
+                            onTap: () => _showEnlargedImage(photoUrl),
+                            borderRadius: BorderRadius.circular(50),
+                            child: Container(
+                              width: 100,
+                              height: 100,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: const Color(0xFFEEF2FF),
+                                border: Border.all(color: Colors.white, width: 4),
+                                boxShadow: [BoxShadow(color: const Color(0xFF2563EB).withOpacity(0.2), blurRadius: 20, offset: const Offset(0, 8))],
+                              ),
+                              child: ClipOval(
+                                child: photoUrl.isNotEmpty
+                                    ? Image.network(
+                                        photoUrl,
+                                        fit: BoxFit.cover,
+                                        width: 100,
+                                        height: 100,
+                                        headers: const {'ngrok-skip-browser-warning': 'true'},
+                                        errorBuilder: (context, error, stackTrace) {
+                                          return const Icon(Icons.image_not_supported_rounded, size: 40, color: Color(0xFF94A3B8));
+                                        },
+                                      )
+                                    : const Icon(Icons.person_rounded, size: 50, color: Color(0xFF2563EB)),
+                              ),
                             ),
                           ),
                           
-                          // Loading Indicator saat upload
                           if (_isLoadingPhoto)
                             const Positioned.fill(
                               child: CircularProgressIndicator(color: Color(0xFF2563EB)),
                             ),
 
-                          // Tombol Edit Pensil
+                          // UBAH FUNGSI PADA TOMBOL PENSIL
                           Positioned(
                             bottom: 0,
                             right: 0,
                             child: InkWell(
-                              onTap: _isLoadingPhoto ? null : _pickAndUploadPhoto,
+                              onTap: _isLoadingPhoto ? null : _showPhotoOptions, // Sekarang panggil menu pilihan
                               child: Container(
                                 padding: const EdgeInsets.all(8),
                                 decoration: BoxDecoration(color: const Color(0xFF2563EB), shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 3)),
