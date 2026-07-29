@@ -103,8 +103,9 @@ class _ProfilScreenState extends State<ProfilScreen> {
   @override
   Widget build(BuildContext context) {
     // Siapkan URL gambar asli dari server Laravel (folder public/profil)
+    // UBAH BAGIAN INI: Sekarang kita panggil fotonya lewat jalur API yang baru dibuat
     String photoUrl = _fotoProfil.isNotEmpty 
-        ? '${ApiConfig.baseUrl.replaceAll('/api', '')}/storage/profil/$_fotoProfil' 
+        ? '${ApiConfig.baseUrl}/profil/foto/$_fotoProfil' 
         : '';
 
     return Scaffold(
@@ -137,14 +138,25 @@ class _ProfilScreenState extends State<ProfilScreen> {
                               color: const Color(0xFFEEF2FF),
                               border: Border.all(color: Colors.white, width: 4),
                               boxShadow: [BoxShadow(color: const Color(0xFF2563EB).withOpacity(0.2), blurRadius: 20, offset: const Offset(0, 8))],
-                              // Tampilkan gambar jika ada URL-nya, jika tidak pakai icon orang
-                              image: photoUrl.isNotEmpty
-                                  ? DecorationImage(image: NetworkImage(photoUrl), fit: BoxFit.cover)
-                                  : null,
                             ),
-                            child: photoUrl.isEmpty
-                                ? const Icon(Icons.person_rounded, size: 50, color: Color(0xFF2563EB))
-                                : null,
+                            // UBAH DISINI: Pakai ClipOval & Image.network biar kebal error di Web
+                            child: ClipOval(
+                              child: photoUrl.isNotEmpty
+                                  ? Image.network(
+                                      photoUrl,
+                                      fit: BoxFit.cover,
+                                      width: 100,
+                                      height: 100,
+                                      headers: const {
+                                        'ngrok-skip-browser-warning': 'true',
+                                      },
+                                      errorBuilder: (context, error, stackTrace) {
+                                        // Kalau diblokir CORS Chrome atau 404, balik ke icon default
+                                        return const Icon(Icons.image_not_supported_rounded, size: 40, color: Color(0xFF94A3B8));
+                                      },
+                                    )
+                                  : const Icon(Icons.person_rounded, size: 50, color: Color(0xFF2563EB)),
+                            ),
                           ),
                           
                           // Loading Indicator saat upload

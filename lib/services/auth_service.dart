@@ -152,11 +152,19 @@ class AuthService {
     });
 
     // Karena jalan di Web, kita baca gambarnya sebagai Bytes
+    // Karena jalan di Web, kita baca gambarnya sebagai Bytes
     var bytes = await imageFile.readAsBytes();
+    
+    // UBAH BAGIAN INI: Paksa kasih nama ber-ekstensi .jpg kalau dari Web namanya aneh
+    String fileName = imageFile.name;
+    if (!fileName.toLowerCase().endsWith('.jpg') && !fileName.toLowerCase().endsWith('.png') && !fileName.toLowerCase().endsWith('.jpeg')) {
+      fileName = 'foto_profil_web.jpg'; 
+    }
+
     var multipartFile = http.MultipartFile.fromBytes(
       'foto_profil', 
       bytes, 
-      filename: imageFile.name,
+      filename: fileName, 
     );
     
     request.files.add(multipartFile);
