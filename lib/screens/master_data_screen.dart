@@ -1,6 +1,9 @@
 // Aby
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'mahasiswa_screen.dart';
+import 'kategori_screen.dart';
+import 'validator_screen.dart';
 
 class MasterDataScreen extends StatelessWidget {
   const MasterDataScreen({super.key});
@@ -40,8 +43,11 @@ class MasterDataScreen extends StatelessWidget {
                         icon: Icons.category_rounded,
                         color: const Color(0xFF2563EB),
                         onTap: () {
-                          // TODO: Navigasi ke Halaman Kategori
-                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Membuka Kategori Prestasi...')));
+                          // UBAH BAGIAN INI
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (context) => const KategoriScreen()),
+                          );
                         },
                       ),
                       const SizedBox(height: 16),
@@ -53,8 +59,11 @@ class MasterDataScreen extends StatelessWidget {
                         icon: Icons.people_alt_rounded,
                         color: const Color(0xFF10B981),
                         onTap: () {
-                          // TODO: Navigasi ke Halaman Mahasiswa
-                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Membuka Data Mahasiswa...')));
+                          // UBAH BAGIAN INI BIAR PINDAH HALAMAN
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (context) => const MahasiswaScreen()),
+                          );
                         },
                       ),
                       const SizedBox(height: 16),
@@ -66,8 +75,11 @@ class MasterDataScreen extends StatelessWidget {
                         icon: Icons.admin_panel_settings_rounded,
                         color: const Color(0xFFF59E0B),
                         onTap: () {
-                          // TODO: Navigasi ke Halaman Validator
-                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Membuka Data Validator...')));
+                          // UBAH BAGIAN INI
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (context) => const ValidatorScreen()),
+                          );
                         },
                       ),
                     ]),
