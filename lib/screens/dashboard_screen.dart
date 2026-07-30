@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart'; // Tambahan untuk Export Laporan
 import '../services/auth_service.dart';
 import '../services/prestasi_service.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 import '../config/api_config.dart'; // Tambahan untuk baseUrl
 import 'login_screen.dart';
 import 'input_prestasi_screen.dart';
@@ -121,6 +123,229 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Gagal memulai proses download laporan'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  // --- DETAIL PRESTASI RIWAYAT DISINI ---
+  // FUNCTION
+  // --- DETAIL PRESTASI RIWAYAT DISINI ---
+  // FUNCTION
+  void _showDetailPrestasi(Map<String, dynamic> item, String role) {
+    final String namaKompetisi = item['nama_kompetisi'] ?? '-';
+    final String tingkat = item['tingkat'] ?? '-';
+    final String penyelenggara = item['penyelenggara'] ?? '-';
+    final String fileBukti = item['file_bukti'] ?? '';
+    
+    // Paksa jadi huruf kecil untuk pencocokan logika
+    final String rawStatus = (item['status_validasi'] ?? 'menunggu').toString().toLowerCase();
+    final int idPrestasi = item['id'];
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Detail Prestasi', style: TextStyle(fontWeight: FontWeight.bold)),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Kompetisi: $namaKompetisi', style: const TextStyle(fontWeight: FontWeight.w600)),
+              const SizedBox(height: 8),
+              Text('Penyelenggara: $penyelenggara'),
+              Text('Tingkat: $tingkat'),
+              Text('Status: ${rawStatus.toUpperCase()}'),
+              const SizedBox(height: 16),
+              
+              // Tombol Buka Sertifikat
+              if (fileBukti.isNotEmpty)
+                ElevatedButton.icon(
+                  onPressed: () {
+                    final imageUrl = '${ApiConfig.baseUrl.replaceAll('/api', '')}/storage/bukti/$fileBukti';
+                    
+                    showDialog(
+                      context: context,
+                      builder: (context) => Dialog(
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        clipBehavior: Clip.antiAlias,
+                        child: Stack(
+                          children: [
+                            // TRIK JITU: Tarik gambar sebagai Bytes biar header Ngrok tembus!
+                            FutureBuilder<http.Response>(
+                              future: http.get(
+                                Uri.parse(imageUrl),
+                                headers: {'ngrok-skip-browser-warning': 'true'},
+                              ),
+                              builder: (context, snapshot) {
+                                if (snapshot.connectionState == ConnectionState.waiting) {
+                                  return const SizedBox(
+                                    height: 300, 
+                                    child: Center(child: CircularProgressIndicator(color: Color(0xFF2563EB)))
+                                  );
+                                }
+                                
+                                // Jika sukses tembus Ngrok dan dapat gambar
+                                if (snapshot.hasData && snapshot.data!.statusCode == 200) {
+                                  return InteractiveViewer(
+                                    child: Image.memory(
+                                      snapshot.data!.bodyBytes,
+                                      fit: BoxFit.contain,
+                                      width: double.infinity,
+                                    ),
+                                  );
+                                }
+                                
+                                // Jika kena blokir CORS keamanan browser
+                                return Container(
+                                  height: 250,
+                                  width: double.infinity,
+                                  color: Colors.grey[100],
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      const Icon(Icons.security, color: Colors.orange, size: 50),
+                                      const SizedBox(height: 12),
+                                      const Text(
+                                        'Keamanan Browser Memblokir Preview', 
+                                        style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)
+                                      ),
+                                      const SizedBox(height: 16),
+                                      ElevatedButton.icon(
+                                        onPressed: () async {
+                                          final url = Uri.parse(imageUrl);
+                                          if (await canLaunchUrl(url)) {
+                                            await launchUrl(url, mode: LaunchMode.externalApplication);
+                                          }
+                                        },
+                                        icon: const Icon(Icons.open_in_new, color: Colors.white, size: 18),
+                                        label: const Text('Buka Secara Manual', style: TextStyle(color: Colors.white)),
+                                        style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1E293B)),
+                                      )
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
+                            Positioned(
+                              top: 8,
+                              right: 8,
+                              child: IconButton(
+                                style: IconButton.styleFrom(backgroundColor: Colors.black54),
+                                icon: const Icon(Icons.close, color: Colors.white),
+                                onPressed: () => Navigator.pop(context),
+                              ),
+                            )
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.image, color: Colors.white),
+                  label: const Text('Lihat File Bukti', style: TextStyle(color: Colors.white)),
+                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF2563EB)),
+                )
+              else
+                const Text('Tidak ada file bukti dilampirkan', style: TextStyle(color: Colors.red, fontStyle: FontStyle.italic)),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Tutup', style: TextStyle(color: Colors.grey)),
+          ),
+          
+          // TOMBOL ACC / TOLAK HANYA MUNCUL JIKA BUKAN MAHASISWA DAN STATUS BELUM DISETUJUI
+          if (role.toLowerCase() != 'user' && role.toLowerCase() != 'mahasiswa' && rawStatus != 'disetujui') ...[
+            if (rawStatus != 'ditolak')
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  _updateStatusPrestasi(idPrestasi, 'ditolak'); 
+                },
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                child: const Text('Tolak', style: TextStyle(color: Colors.white)),
+              ),
+            
+            if (rawStatus != 'disetujui')
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  _updateStatusPrestasi(idPrestasi, 'disetujui'); 
+                },
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                child: const Text('ACC', style: TextStyle(color: Colors.white)),
+              ),
+          ]
+        ],
+      ),
+    );
+  }
+
+  // Fungsi tembak API untuk update status (ACC / Tolak)
+  Future<void> _updateStatusPrestasi(int id, String status) async {
+    try {
+      // 1. Ambil token untuk akses API (langsung pakai _authService yang udah ada di class lu)
+      final token = await _authService.getToken();
+      if (token == null) throw Exception('Sesi telah habis, silakan login ulang.');
+
+      // 2. Munculkan indikator loading (berupa pop-up dialog yang tidak bisa ditutup manual)
+      showDialog(
+        context: context,
+        barrierDismissible: false, 
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(color: Color(0xFF2563EB)),
+        ),
+      );
+
+      // 3. Tembak API Laravel
+      final response = await http.post(
+        Uri.parse('${ApiConfig.baseUrl}/riwayat-prestasi/$id/validasi'),
+        headers: {
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $token',
+          'ngrok-skip-browser-warning': 'true',
+        },
+        body: {
+          'status_validasi': status, // isinya 'disetujui' atau 'ditolak'
+        },
+      );
+
+      // 4. Tutup indikator loading
+      if (mounted) Navigator.pop(context);
+
+      // 5. Cek hasil dari server
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+        
+        if (mounted) {
+          // Tampilkan notifikasi sukses (Hijau untuk ACC, Merah untuk Tolak)
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(responseData['message'] ?? 'Status berhasil diubah'),
+              backgroundColor: status == 'disetujui' ? const Color(0xFF10B981) : Colors.red,
+            ),
+          );
+          _fetchData();
+          
+          // Panggil fungsi untuk me-refresh data di dashboard lu biar statusnya langsung berubah
+          // Contoh: _fetchDashboardData(); atau setState(() {});
+        }
+      } else {
+        final errorData = jsonDecode(response.body);
+        throw Exception(errorData['message'] ?? 'Gagal memvalidasi prestasi');
+      }
+    } catch (e) {
+      // Tutup indikator loading jika terjadi error (hindari dialog nyangkut)
+      if (mounted && Navigator.canPop(context)) {
+         Navigator.pop(context);
+      }
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Terjadi kesalahan: $e'), backgroundColor: Colors.red),
         );
       }
     }
@@ -494,14 +719,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return ListView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      itemCount: _filteredList.length, // Gunakan filtered list
+      itemCount: _filteredList.length,
       itemBuilder: (context, index) {
         final item = _filteredList[index];
-        final String status = item['status_validasi'] ?? 'Menunggu';
+        
+        // 1. Ambil status mentah dari database, paksa jadi huruf kecil semua
+        final String rawStatus = (item['status_validasi'] ?? 'menunggu').toString().toLowerCase();
+        
+        // 2. Siapkan label teks dan warna untuk UI
+        String statusDisplay = 'MENUNGGU';
         Color statusColor = const Color(0xFFF59E0B); 
         
-        if (status == 'Disetujui' || status == 'Valid') statusColor = const Color(0xFF10B981);
-        if (status == 'Ditolak') statusColor = const Color(0xFFEF4444);
+        if (rawStatus == 'disetujui') {
+          statusDisplay = 'DISETUJUI'; 
+          statusColor = const Color(0xFF10B981); // Hijau
+        } else if (rawStatus == 'ditolak') {
+          statusDisplay = 'DITOLAK';
+          statusColor = const Color(0xFFEF4444); // Merah
+        }
 
         String namaMahasiswa = 'Tanpa Nama';
         if (item['mahasiswa'] != null) {
@@ -523,115 +758,132 @@ class _DashboardScreenState extends State<DashboardScreen> {
               BoxShadow(color: Colors.black.withOpacity(0.015), blurRadius: 10, offset: const Offset(0, 4)),
             ],
           ),
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
+          child: Material(
+            color: Colors.transparent,
+            borderRadius: BorderRadius.circular(20),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(20),
+              onTap: () {
+                _showDetailPrestasi(item, widget.role);
+              },
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
                   children: [
-                    Container(
-                      width: 48,
-                      height: 48,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(color: const Color(0xFFF8FAFC), borderRadius: BorderRadius.circular(14)),
-                      child: Text("0${index + 1}", style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF94A3B8), fontSize: 16)),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            namaMahasiswa, 
-                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: Color(0xFF1E293B)),
-                            maxLines: 1, overflow: TextOverflow.ellipsis,
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Container(
+                          width: 48,
+                          height: 48,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(color: const Color(0xFFF8FAFC), borderRadius: BorderRadius.circular(14)),
+                          child: Text("0${index + 1}", style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF94A3B8), fontSize: 16)),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                namaMahasiswa, 
+                                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: Color(0xFF1E293B)),
+                                maxLines: 1, overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                item['nama_kompetisi'] ?? '-', 
+                                style: const TextStyle(color: Color(0xFF2563EB), fontSize: 13, fontWeight: FontWeight.w500),
+                                maxLines: 1, overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
                           ),
-                          const SizedBox(height: 4),
-                          Text(
-                            item['nama_kompetisi'] ?? '-', 
-                            style: const TextStyle(color: Color(0xFF2563EB), fontSize: 13, fontWeight: FontWeight.w500),
-                            maxLines: 1, overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
-                      ),
+                        ),
+                        Text("$poinSkpi Pts", style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Color(0xFF1E293B))),
+                      ],
                     ),
-                    Text("$poinSkpi Pts", style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Color(0xFF1E293B))),
-                  ],
-                ),
-                
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 12.0),
-                  child: Divider(height: 1, color: Color(0xFFF1F5F9)),
-                ),
-                
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(color: statusColor.withOpacity(0.1), borderRadius: BorderRadius.circular(20)),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(width: 8, height: 8, decoration: BoxDecoration(shape: BoxShape.circle, color: statusColor)),
-                          const SizedBox(width: 6),
-                          Text(status.toUpperCase(), style: TextStyle(color: statusColor, fontSize: 11, fontWeight: FontWeight.bold)),
-                        ],
-                      ),
+                    
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 12.0),
+                      child: Divider(height: 1, color: Color(0xFFF1F5F9)),
                     ),
                     
                     Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        if (widget.role.toLowerCase() != 'user' && widget.role.toLowerCase() != 'mahasiswa') ...[
-                          if (status != 'Disetujui' && status != 'Valid') 
-                            InkWell(
-                              onTap: () => _updateStatus(item, 'Valid'),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                decoration: BoxDecoration(color: Colors.green.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-                                child: const Row(
-                                  children: [
-                                    Icon(Icons.check, color: Colors.green, size: 16),
-                                    SizedBox(width: 4),
-                                    Text("Setujui", style: TextStyle(color: Colors.green, fontSize: 12, fontWeight: FontWeight.bold)),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          if (status != 'Disetujui' && status != 'Valid' && status != 'Ditolak')
-                            const SizedBox(width: 8),
-                          if (status != 'Ditolak')
-                            InkWell(
-                              onTap: () => _updateStatus(item, 'Ditolak'),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                decoration: BoxDecoration(color: Colors.red.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-                                child: const Row(
-                                  children: [
-                                    Icon(Icons.close, color: Colors.red, size: 16),
-                                    SizedBox(width: 4),
-                                    Text("Tolak", style: TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.bold)),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          const SizedBox(width: 8),
-                          
-                          InkWell(
-                            onTap: () => _confirmDelete(item['id']),
-                            child: Container(
-                              padding: const EdgeInsets.all(6),
-                              decoration: BoxDecoration(color: Colors.red.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-                              child: const Icon(Icons.delete_outline_rounded, color: Colors.red, size: 20),
-                            ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(color: statusColor.withOpacity(0.1), borderRadius: BorderRadius.circular(20)),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(width: 8, height: 8, decoration: BoxDecoration(shape: BoxShape.circle, color: statusColor)),
+                              const SizedBox(width: 6),
+                              // PAKAI statusDisplay DI SINI BIAR WARNA DAN TEKS NYAMBUNG
+                              Text(statusDisplay, style: TextStyle(color: statusColor, fontSize: 11, fontWeight: FontWeight.bold)),
+                            ],
                           ),
-                        ],
+                        ),
+                        
+                        Row(
+                          children: [
+                            if (widget.role.toLowerCase() != 'user' && widget.role.toLowerCase() != 'mahasiswa') ...[
+                              
+                              // TOMBOL SETUJUI (Hilang kalau statusnya udah disetujui)
+                              if (rawStatus != 'disetujui') 
+                                InkWell(
+                                  onTap: () => _updateStatus(item, 'disetujui'), // Kirim 'disetujui' ke Laravel
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                    decoration: BoxDecoration(color: Colors.green.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                                    child: const Row(
+                                      children: [
+                                        Icon(Icons.check, color: Colors.green, size: 16),
+                                        SizedBox(width: 4),
+                                        Text("Setujui", style: TextStyle(color: Colors.green, fontSize: 12, fontWeight: FontWeight.bold)),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                                
+                              if (rawStatus != 'disetujui' && rawStatus != 'ditolak')
+                                const SizedBox(width: 8),
+                                
+                              // TOMBOL TOLAK (Hilang kalau statusnya udah ditolak)
+                              if (rawStatus != 'ditolak')
+                                InkWell(
+                                  onTap: () => _updateStatus(item, 'ditolak'), // Kirim 'ditolak' ke Laravel
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                    decoration: BoxDecoration(color: Colors.red.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                                    child: const Row(
+                                      children: [
+                                        Icon(Icons.close, color: Colors.red, size: 16),
+                                        SizedBox(width: 4),
+                                        Text("Tolak", style: TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.bold)),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                                
+                              const SizedBox(width: 8),
+                              
+                              InkWell(
+                                onTap: () => _confirmDelete(item['id']),
+                                child: Container(
+                                  padding: const EdgeInsets.all(6),
+                                  decoration: BoxDecoration(color: Colors.red.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                                  child: const Icon(Icons.delete_outline_rounded, color: Colors.red, size: 20),
+                                ),
+                              ),
+                            ],
+                          ],
+                        )
                       ],
-                    )
+                    ),
                   ],
                 ),
-              ],
+              ),
             ),
           ),
         );

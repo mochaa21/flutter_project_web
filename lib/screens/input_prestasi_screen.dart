@@ -1,7 +1,8 @@
 // Aby
-import 'dart:io'; // Tambahan untuk File
+import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart'; // Tambahan untuk akses Galeri
+import 'package:image_picker/image_picker.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import '../services/prestasi_service.dart';
 import '../services/master_service.dart';
 
@@ -28,8 +29,8 @@ class _InputPrestasiScreenState extends State<InputPrestasiScreen> {
   String? _selectedMahasiswaId;
   String? _selectedKategoriId;
 
-  // Variabel untuk Gambar
-  File? _imageFile;
+  // Variabel untuk Gambar (WAJIB XFile biar aman di Web)
+  XFile? _imageFile;
   final ImagePicker _picker = ImagePicker();
 
   bool _isLoading = false;
@@ -68,12 +69,13 @@ class _InputPrestasiScreenState extends State<InputPrestasiScreen> {
     try {
       final XFile? pickedFile = await _picker.pickImage(
         source: ImageSource.gallery,
-        imageQuality: 80, // Kompresi dikit biar ga terlalu berat ngirimnya
+        imageQuality: 80, // Kompresi dikit biar ga terlalu berat
       );
       
       if (pickedFile != null) {
         setState(() {
-          _imageFile = File(pickedFile.path);
+          // PERBAIKAN KRUSIAL: Langsung simpan XFile-nya, jangan pakai File()
+          _imageFile = pickedFile; 
         });
       }
     } catch (e) {
@@ -93,20 +95,16 @@ class _InputPrestasiScreenState extends State<InputPrestasiScreen> {
       return;
     }
 
-    // Validasi opsional: Kalo wajib pakai foto, aktifkan kodingan di bawah ini
-    /*
     if (_imageFile == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Silakan upload bukti sertifikat terlebih dahulu'), backgroundColor: Colors.red),
       );
       return;
     }
-    */
 
     setState(() => _isLoading = true);
 
     try {
-      // Perhatikan: Karena pakai MultipartRequest, semua value harus berbentuk String
       final Map<String, String> data = {
         'mahasiswa_id': _selectedMahasiswaId!,
         'kategori_id': _selectedKategoriId!,
@@ -116,7 +114,7 @@ class _InputPrestasiScreenState extends State<InputPrestasiScreen> {
         'status_validasi': 'Menunggu', 
       };
 
-      // Kirim data teks dan file gambar
+      // Kirim data teks dan XFile gambar
       await _prestasiService.createPrestasi(data, _imageFile);
 
       if (mounted) {
@@ -209,21 +207,56 @@ class _InputPrestasiScreenState extends State<InputPrestasiScreen> {
                           icon: Icons.emoji_events_outlined,
                         ),
                         const SizedBox(height: 16),
+                        
                         _buildTextField(
                           controller: _penyelenggaraController,
                           label: 'Penyelenggara',
                           icon: Icons.business_outlined,
                         ),
                         const SizedBox(height: 16),
-                        _buildTextField(
+                        
+                        TextFormField(
                           controller: _tanggalKegiatanController,
-                          label: 'Tanggal Kegiatan (YYYY-MM-DD)',
-                          icon: Icons.calendar_today_outlined,
-                          keyboardType: TextInputType.datetime,
+                          readOnly: true,
+                          decoration: InputDecoration(
+                            labelText: 'Tanggal Kegiatan',
+                            hintText: 'Pilih Tanggal',
+                            prefixIcon: const Icon(Icons.calendar_today_outlined, color: Color(0xFF94A3B8)),
+                            filled: true,
+                            fillColor: const Color(0xFFF8FAFC),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFF2563EB), width: 1.5)),
+                          ),
+                          onTap: () async {
+                            DateTime? pickedDate = await showDatePicker(
+                              context: context,
+                              initialDate: DateTime.now(),
+                              firstDate: DateTime(2000),
+                              lastDate: DateTime(2100),
+                              builder: (context, child) {
+                                return Theme(
+                                  data: Theme.of(context).copyWith(
+                                    colorScheme: const ColorScheme.light(
+                                      primary: Color(0xFF2563EB),
+                                      onPrimary: Colors.white,
+                                      onSurface: Color(0xFF1E293B),
+                                    ),
+                                  ),
+                                  child: child!,
+                                );
+                              },
+                            );
+
+                            if (pickedDate != null) {
+                              setState(() {
+                                String formattedDate = "${pickedDate.year}-${pickedDate.month.toString().padLeft(2, '0')}-${pickedDate.day.toString().padLeft(2, '0')}";
+                                _tanggalKegiatanController.text = formattedDate;
+                              });
+                            }
+                          },
                         ),
                         const SizedBox(height: 24),
 
-                        // BAGIAN UPLOAD GAMBAR
                         const Text('Bukti Sertifikat / Dokumentasi', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF1E293B))),
                         const SizedBox(height: 8),
                         InkWell(
@@ -239,7 +272,9 @@ class _InputPrestasiScreenState extends State<InputPrestasiScreen> {
                             child: _imageFile != null
                                 ? ClipRRect(
                                     borderRadius: BorderRadius.circular(12),
-                                    child: Image.file(_imageFile!, fit: BoxFit.cover, width: double.infinity),
+                                    child: kIsWeb 
+                                          ? Image.network(_imageFile!.path, fit: BoxFit.cover) 
+                                          : Image.file(File(_imageFile!.path), fit: BoxFit.cover)
                                   )
                                 : Column(
                                     mainAxisAlignment: MainAxisAlignment.center,

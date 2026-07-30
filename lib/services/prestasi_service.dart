@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io'; // Tambahan untuk File
 import 'package:http/http.dart' as http;
 import '../config/api_config.dart';
+import 'package:image_picker/image_picker.dart';
 import 'auth_service.dart';
 
 class PrestasiService {
@@ -28,39 +29,55 @@ class PrestasiService {
   }
 
   // UBAH DISINI: Tambahkan parameter File gambar dan ubah jadi MultipartRequest
-  Future<Map<String, dynamic>> createPrestasi(Map<String, String> data, File? imageFile) async {
+  // Pastikan import ini ada di paling atas file service lu:
+  // import 'package:http/http.dart' as http;
+  // import 'package:image_picker/image_picker.dart'; // Untuk XFile
+
+  Future<void> createPrestasi(Map<String, String> data, dynamic imageFile) async {
+    // 1. Ambil token
     final token = await AuthService().getToken();
     if (token == null) throw Exception('Token tidak ditemukan');
 
-    var uri = Uri.parse('${ApiConfig.baseUrl}/riwayat-prestasi');
-    var request = http.MultipartRequest('POST', uri);
+    var request = http.MultipartRequest(
+      'POST',
+      Uri.parse('${ApiConfig.baseUrl}/riwayat-prestasi'),
+    );
 
-    // Set Headers
+    // 2. Set Header
     request.headers.addAll({
       'Accept': 'application/json',
       'Authorization': 'Bearer $token',
       'ngrok-skip-browser-warning': 'true',
     });
 
-    // Masukkan data teks (Form Fields)
+    // 3. Masukkan data teks (ID mahasiswa, kategori, nama, dsb)
     request.fields.addAll(data);
 
-    // Masukkan file gambar jika ada
-    // Sesuaikan 'file_sertifikat' dengan nama kolom/field yang diminta API Laravel lu
+    // 4. MASUKKAN GAMBAR (ANTI ERROR WEB)
     if (imageFile != null) {
-      request.files.add(
-        await http.MultipartFile.fromPath('file_sertifikat', imageFile.path),
+      // Baca file sebagai Bytes (aman untuk Web dan Mobile)
+      var bytes = await imageFile.readAsBytes();
+      
+      String fileName = imageFile.name;
+      if (!fileName.toLowerCase().endsWith('.jpg') && !fileName.toLowerCase().endsWith('.png') && !fileName.toLowerCase().endsWith('.jpeg')) {
+        fileName = 'bukti_prestasi.jpg'; // Nama default jika tidak terbaca
+      }
+
+      var multipartFile = http.MultipartFile.fromBytes(
+        'file_bukti', // Harus sama dengan request di Laravel
+        bytes,
+        filename: fileName,
       );
+      
+      request.files.add(multipartFile);
     }
 
-    // Kirim Request
+    // 5. Eksekusi pengiriman
     var streamedResponse = await request.send();
     var response = await http.Response.fromStream(streamedResponse);
 
-    if (response.statusCode == 201 || response.statusCode == 200) {
-      return jsonDecode(response.body);
-    } else {
-      throw Exception('Gagal menyimpan data ke server: ${response.body}');
+    if (response.statusCode != 200 && response.statusCode != 201) {
+      throw Exception('Error Server: ${response.body}');
     }
   }
 
