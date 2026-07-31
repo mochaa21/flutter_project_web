@@ -163,7 +163,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               if (fileBukti.isNotEmpty)
                 ElevatedButton.icon(
                   onPressed: () {
-                    final imageUrl = '${ApiConfig.baseUrl.replaceAll('/api', '')}/storage/bukti/$fileBukti';
+                    final imageUrl = '${ApiConfig.baseUrl.replaceAll('/api', '')}/file-bukti/$fileBukti';
                     
                     showDialog(
                       context: context,
@@ -196,7 +196,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                     ),
                                   );
                                 }
-                                
+
                                 // Jika kena blokir CORS keamanan browser
                                 return Container(
                                   height: 250,
@@ -205,23 +205,34 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                   child: Column(
                                     mainAxisAlignment: MainAxisAlignment.center,
                                     children: [
-                                      const Icon(Icons.security, color: Colors.orange, size: 50),
+                                      const Icon(Icons.cloud_download_rounded, color: Color(0xFF2563EB), size: 50),
                                       const SizedBox(height: 12),
                                       const Text(
-                                        'Keamanan Browser Memblokir Preview', 
-                                        style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)
+                                        'Preview diblokir keamanan browser', 
+                                        style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.bold)
                                       ),
                                       const SizedBox(height: 16),
                                       ElevatedButton.icon(
                                         onPressed: () async {
                                           final url = Uri.parse(imageUrl);
+                                          // Membuka URL di luar aplikasi (Browser default HP / Tab baru di Chrome)
+                                          // Otomatis mendownload atau menampilkan file asli tanpa kena blokir CORS aplikasi
                                           if (await canLaunchUrl(url)) {
                                             await launchUrl(url, mode: LaunchMode.externalApplication);
+                                          } else {
+                                            if (mounted) {
+                                              ScaffoldMessenger.of(context).showSnackBar(
+                                                const SnackBar(content: Text('Gagal membuka link file')),
+                                              );
+                                            }
                                           }
                                         },
-                                        icon: const Icon(Icons.open_in_new, color: Colors.white, size: 18),
-                                        label: const Text('Buka Secara Manual', style: TextStyle(color: Colors.white)),
-                                        style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1E293B)),
+                                        icon: const Icon(Icons.download_rounded, color: Colors.white, size: 18),
+                                        label: const Text('Download / Lihat File', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: const Color(0xFF2563EB),
+                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                        ),
                                       )
                                     ],
                                   ),
